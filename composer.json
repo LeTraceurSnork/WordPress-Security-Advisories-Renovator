@@ -1,0 +1,29 @@
+{
+    "name": "letraceursnork/wordpress-security-advisories-renovator",
+    "description": "CI with a bot that periodically renovates dependencies in composer.json conflict section of WordPress-Security-Advisories repository",
+    "type": "metapackage",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Letraceursnork\\WordpressSecurityAdvisoriesRenovator\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "LeTraceurSnork",
+            "email": "le_traceur_snork@mail.ru"
+        }
+    ],
+    "require": {
+        "php": ">=8.1",
+        "guzzlehttp/guzzle": "7.9.2",
+        "knplabs/github-api": "3.16.0",
+        "symfony/http-client": "7.1.8",
+        "nyholm/psr7": "1.8.2"
+    },
+    "config": {
+        "allow-plugins": {
+            "php-http/discovery": true
+        }
+    }
+}
