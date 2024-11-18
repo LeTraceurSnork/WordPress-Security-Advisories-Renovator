@@ -5,7 +5,7 @@
     "license": "MIT",
     "autoload": {
         "psr-4": {
-            "Letraceursnork\\WordpressSecurityAdvisoriesRenovator\\": "src/"
+            "LTS\\WordpressSecurityAdvisoriesRenovator\\": "src/"
         }
     },
     "authors": [
@@ -15,7 +15,7 @@
         }
     ],
     "require": {
-        "php": ">=8.1",
+        "php": ">=8.2",
         "guzzlehttp/guzzle": "7.9.2",
         "knplabs/github-api": "3.16.0",
         "symfony/http-client": "7.1.8",

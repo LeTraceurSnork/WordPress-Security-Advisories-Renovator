@@ -1,5 +1,10 @@
 # IDEs folders
 .idea/
 
+# Environment
+.env
+.env*
+!.env.example
+
 # Vendors
 /vendor/

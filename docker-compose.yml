@@ -1,0 +1,8 @@
+services:
+  app:
+    image: composer:2.6.6
+    working_dir: /renovator
+    volumes:
+      - .:/renovator:cached
+    env_file:
+      - .env
