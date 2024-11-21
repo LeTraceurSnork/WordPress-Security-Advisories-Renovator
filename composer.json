@@ -16,10 +16,11 @@
     ],
     "require": {
         "php": ">=8.2",
+        "composer/semver": "3.4.3",
         "guzzlehttp/guzzle": "7.9.2",
         "knplabs/github-api": "3.16.0",
-        "symfony/http-client": "7.1.8",
-        "nyholm/psr7": "1.8.2"
+        "nyholm/psr7": "1.8.2",
+        "symfony/http-client": "7.1.8"
     },
     "config": {
         "allow-plugins": {

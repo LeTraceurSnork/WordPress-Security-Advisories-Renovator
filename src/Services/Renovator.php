@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace LTS\WordpressSecurityAdvisoriesRenovator\Services;
 
+use Composer\Semver\VersionParser;
+use Exception;
 use Github\Client as GithubClient;
 use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Exception\GuzzleException;
@@ -51,10 +53,12 @@ class Renovator
     /**
      * @param ClientInterface $client
      * @param GithubClient    $github_client
+     * @param VersionParser   $versionParser
      */
     public function __construct(
         protected readonly ClientInterface $client = new GuzzleClient(),
-        protected readonly GithubClient $github_client = new GithubClient()
+        protected readonly GithubClient $github_client = new GithubClient(),
+        protected readonly VersionParser $versionParser = new VersionParser(),
     ) {
     }
 
@@ -70,42 +74,27 @@ class Renovator
      */
     public function renovate(string $token, string $repo_owner, string $repo_name): void
     {
-        $this->token      = $token;
-        $this->repo_owner = $repo_owner;
-        $this->repo_name  = $repo_name;
-
-        $composer_json_data = $this->github_client
-            ->api('repo')
-            ->contents()
-            ->show($this->repo_owner, $this->repo_name, static::COMPOSER_JSON_PATH);
-        if (!$composer_json_data || !isset($composer_json_data['content'])) {
-            throw new RuntimeException('Missing composer.json content');
-        }
-        $this->composer_json_content = json_decode(
-            base64_decode($composer_json_data['content']),
-            associative: true,
-            depth: 512,
-            flags: JSON_THROW_ON_ERROR
-        );
+        $this->token                 = $token;
+        $this->repo_owner            = $repo_owner;
+        $this->repo_name             = $repo_name;
+        $this->composer_json_content = $this->getComposerJsonContent();
 
         $feed = $this->getScannerFeed();
-        $file = file_get_contents('/renovator/Scanner_Feed-1731945545798.txt');
-        $feed = json_decode($file,
-            associative: true,
-            depth: 512,
-            flags: JSON_THROW_ON_ERROR);
 
+        $time1 = time();
         foreach ($feed as $entry) {
-            $software = $entry['software'] ?? null;
-            if (empty($software)) {
+            if (empty($entry['software'])) {
                 continue;
             }
 
-            foreach ($software as $item) {
-                $this->updateConflictsForVulnerability($item);
-            }
-            die;
+            $updated = $this->updateConflictsForVulnerability($entry);
         }
+        $time2 = time();
+        var_dump($time2 - $time1);
+
+        $encoded = json_encode(value: $this->composer_json_content, flags: JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+
+        file_put_contents('new_composer.txt', $encoded);
     }
 
     /**
@@ -127,38 +116,84 @@ class Renovator
         return json_decode(
             json: $response->getBody()->getContents(),
             associative: true,
-            depth: 512,
             flags: JSON_THROW_ON_ERROR
         );
     }
 
-    protected function updateConflictsForVulnerability(array $software)
+    /**
+     * Updates composer.json conflict section for specified vulnerability.
+     *
+     * @param array $entry
+     *
+     * @return bool Whether composer.json was updated or not.
+     */
+    protected function updateConflictsForVulnerability(array $entry): bool
     {
-        if (!$software['patched']) {
-            return;
+        $updated  = false;
+        $software = $entry['software'];
+        if (empty($software)) {
+            return false;
         }
 
-        $affectedVersions = $software['affected_versions'] ?? [];
-        if (!is_array($affectedVersions)) {
-            return;
-        }
+        foreach ($software as $software_entry) {
+            $affectedVersions = $software_entry['affected_versions'] ?? [];
+            if (!is_array($affectedVersions) || empty($affectedVersions)) {
+                continue;
+            }
 
-        $slug             = $software['slug'];
-        $vulnerability_key        = sprintf('wpackagist-plugin/%1$s', $slug);
-        foreach ($affectedVersions as $affected_version) {
-            $conflict_versions_string = $this->getConflictStringForAffectedVersion($affected_version);
-            if (isset($this->composer_json_content['conflict'][$vulnerability_key])) {
-                var_dump('if');
-                if (!str_contains($this->composer_json_content['conflict'][$vulnerability_key], $conflict_versions_string)) {
-                    $this->composer_json_content['conflict'][$vulnerability_key] .= " || $conflict_versions_string";
+            $entry_type = $software_entry['type'];
+            switch ($entry_type) {
+                case 'plugin':
+                case 'theme':
+                    $vulnerability_key =
+                        strtolower(sprintf('wpackagist-%1$s/%2$s', $entry_type, $software_entry['slug']));
+
+                    break;
+
+                case 'core':
+                    if ($software_entry['slug'] !== 'wordpress') {
+                        break;
+                    }
+
+                    $vulnerability_key = 'roots/wordpress';
+
+                    break;
+
+                default:
+                    break;
+            }
+
+            if (!isset($vulnerability_key)) {
+                continue;
+            }
+
+            foreach ($affectedVersions as $affected_version) {
+                $conflict_versions_string = $this->getConflictStringForAffectedVersion($affected_version);
+                if (!isset($conflict_versions_string)) {
+                    continue;
                 }
-            } else {
-                var_dump('else');
-                $this->composer_json_content['conflict'][$vulnerability_key] = $conflict_versions_string;
+
+                if (!isset($this->composer_json_content['conflict'][$vulnerability_key])) {
+                    $this->composer_json_content['conflict'][$vulnerability_key] = $conflict_versions_string;
+                    $updated                                                     = true;
+                    continue;
+                }
+
+                if (!str_contains(
+                    $this->composer_json_content['conflict'][$vulnerability_key],
+                    $conflict_versions_string
+                )) {
+                    $this->composer_json_content['conflict'][$vulnerability_key] .= " || $conflict_versions_string";
+                    $updated                                                     = true;
+                }
+            }
+
+            if ($updated) {
+                ksort($this->composer_json_content['conflict']);
             }
         }
 
-        var_dump($this->composer_json_content);
+        return $updated;
     }
 
     /**
@@ -169,13 +204,18 @@ class Renovator
      *
      * @param array $affected_version
      *
-     * @return string
+     * @return string|null
      */
-    protected function getConflictStringForAffectedVersion(array $affected_version): string
+    protected function getConflictStringForAffectedVersion(array $affected_version): ?string
     {
         $to_version = $affected_version['to_version'] ?? null;
         if (!$to_version) {
-            return '';
+            return null;
+        }
+        $from_version = $affected_version['from_version'] ?? '*';
+
+        if (!$this->isValidComposerVersion($from_version) || !$this->isValidComposerVersion($to_version)) {
+            return null;
         }
 
         $from_symbol = ($affected_version['from_inclusive'] ?? null)
@@ -185,14 +225,17 @@ class Renovator
             ? '<='
             : '<';
 
-        $from_version = $affected_version['from_version'] ?? '*';
-        $from_part    = $from_version === '*'
-            ? ''
-            : sprintf('%1$2%2$s', $from_symbol, $from_version);
-
-        return $from_part
-            ? sprintf('%1$s,%2$s%3$s', $from_part, $to_symbol, $to_version)
-            : sprintf('%1$s%2$s', $to_symbol, $to_version);
+        return match (true) {
+            $from_version === $to_version => $from_version,
+            $from_version === '*'         => sprintf('%1$s%2$s', $to_symbol, $to_version),
+            default                       => sprintf(
+                '%1$s%2$s,%3$s%4$s',
+                $from_symbol,
+                $from_version,
+                $to_symbol,
+                $to_version
+            ),
+        };
     }
 
     /**
@@ -208,5 +251,47 @@ class Renovator
         return $reference['object']['sha'] ?? null
             ? (string)$reference['object']['sha']
             : null;
+    }
+
+    /**
+     * Retrieves remote repository's composer.json content
+     *
+     * @throws JsonException
+     * @throws RuntimeException
+     * @return array
+     */
+    private function getComposerJsonContent(): array
+    {
+        $composer_json_data = $this->github_client
+            ->api('repo')
+            ->contents()
+            ->show($this->repo_owner, $this->repo_name, static::COMPOSER_JSON_PATH);
+        if (!$composer_json_data || !isset($composer_json_data['content'])) {
+            throw new RuntimeException('Missing composer.json content');
+        }
+
+        return json_decode(
+            base64_decode($composer_json_data['content']),
+            associative: true,
+            flags: JSON_THROW_ON_ERROR
+        );
+    }
+
+    /**
+     * Whether passed string is a valid composer.json version of a package
+     *
+     * @param string $version
+     *
+     * @return bool
+     */
+    private function isValidComposerVersion(string $version): bool
+    {
+        try {
+            $this->versionParser->parseConstraints($version);
+
+            return true;
+        } catch (Exception $e) {
+            return false;
+        }
     }
 }
