@@ -20,6 +20,11 @@ class WordfenceController
     public const WORDFENCE_SCANNER_FEED_URL = 'https://www.wordfence.com/api/intelligence/v2/vulnerabilities/scanner/';
 
     /**
+     * URL of Wordfence /production/ feed (full version of API list)
+     */
+    public const WORDFENCE_PRODUCTION_FEED_URL = 'https://www.wordfence.com/api/intelligence/v2/vulnerabilities/production/';
+
+    /**
      * @param ClientInterface $client
      */
     public function __construct(protected readonly ClientInterface $client = new Client())
@@ -38,14 +43,46 @@ class WordfenceController
      *     }[]
      * }[]
      */
+    public function getProductionFeed(): array
+    {
+        return $this->getSelectedFeed(static::WORDFENCE_PRODUCTION_FEED_URL);
+    }
+
+    /**
+     * @throws GuzzleException
+     * @throws JsonException
+     * @return array{
+     *     software: array{
+     *         type: string,
+     *         name: string,
+     *         slug: string,
+     *         affected_versions: array,
+     *     }[]
+     * }[]
+     */
     public function getScannerFeed(): array
     {
-        //        $response = $this->client
-        //            ->get(static::WORDFENCE_SCANNER_FEED_URL)
-        //            ->getBody()
-        //            ->getContents();
+        return $this->getSelectedFeed(static::WORDFENCE_SCANNER_FEED_URL);
+    }
 
-        $response = file_get_contents('./Scanner_Feed.txt');
+    /**
+     * @throws GuzzleException
+     * @throws JsonException
+     * @return array{
+     *     software: array{
+     *         type: string,
+     *         name: string,
+     *         slug: string,
+     *         affected_versions: array,
+     *     }[]
+     * }[]
+     */
+    protected function getSelectedFeed(string $feed): array
+    {
+        $response = $this->client
+            ->get($feed)
+            ->getBody()
+            ->getContents();
 
         return json_decode(
             json: $response,

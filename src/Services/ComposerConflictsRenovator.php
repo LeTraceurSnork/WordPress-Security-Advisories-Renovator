@@ -6,41 +6,27 @@ namespace LTS\WordpressSecurityAdvisoriesRenovator\Services;
 
 use Composer\Semver\VersionParser;
 use Exception;
-use Github\Client as GithubClient;
-use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Exception\GuzzleException;
 use JsonException;
+use LTS\WordpressSecurityAdvisoriesRenovator\Controllers\GithubApiController;
 use LTS\WordpressSecurityAdvisoriesRenovator\Controllers\WordfenceController;
 use LTS\WordpressSecurityAdvisoriesRenovator\DTO\ConflictSectionUpdateResult;
-use Psr\Http\Client\ClientInterface;
 use RuntimeException;
 
 /**
  * Service to renovate dependencies
  */
-class Renovator
+class ComposerConflictsRenovator
 {
+    /**
+     * Name of repository's default branch
+     */
+    public const REPO_DEFAULT_BRANCH_NAME = 'master';
+
     /**
      * Path to composer.json renovating file
      */
     public const COMPOSER_JSON_PATH = 'composer.json';
-
-    /**
-     * @var string Bot's GitHub Personal Access Token
-     */
-    protected string $token;
-
-    /**
-     * @var string Repository owner (format <OWNER>/<REPO>/)
-     *             https://github.com/<OWNER>/<REPO>/
-     */
-    protected string $repo_owner;
-
-    /**
-     * @var string Repository name (format <OWNER>/<REPO>/)
-     *             https://github.com/<OWNER>/<REPO>/
-     */
-    protected string $repo_name;
 
     /**
      * @var array Contents of composer.json file
@@ -48,58 +34,87 @@ class Renovator
     protected array $composer_json_content;
 
     /**
-     * @param ClientInterface     $client
-     * @param GithubClient        $github_client
-     * @param VersionParser       $versionParser
+     * @param GithubApiController $github_api_controller
+     * @param VersionParser       $version_parser
      * @param WordfenceController $wordfence_controller
      */
     public function __construct(
-        protected readonly ClientInterface $client = new GuzzleClient(),
-        protected readonly GithubClient $github_client = new GithubClient(),
-        protected readonly VersionParser $versionParser = new VersionParser(),
+        protected readonly GithubApiController $github_api_controller,
+        protected readonly VersionParser $version_parser = new VersionParser(),
         protected readonly WordfenceController $wordfence_controller = new WordfenceController()
     ) {
     }
 
     /**
-     * @param string $token      Bot's github personal access token
-     * @param string $repo_owner Repository owner + next param
-     * @param string $repo_name  Repository name that needs to be renovated
+     * @param int $pause
      *
      * @throws GuzzleException
      * @throws JsonException
      * @throws RuntimeException
      * @return void
      */
-    public function renovate(string $token, string $repo_owner, string $repo_name): void
+    public function renovate(int $pause = 1): void
     {
-        $this->token      = $token;
-        $this->repo_owner = $repo_owner;
-        $this->repo_name  = $repo_name;
+        $file_content                = $this->github_api_controller->getFileContent(static::COMPOSER_JSON_PATH);
+        $this->composer_json_content = json_decode($file_content, associative: true, flags: JSON_THROW_ON_ERROR);
+        $feed                        = $this->wordfence_controller->getProductionFeed();
 
-        $this->composer_json_content = $this->getComposerJsonContent();
-        $feed                        = $this->wordfence_controller->getScannerFeed();
-
-        $i = 0;
         foreach ($feed as $entry) {
-            $i++;
             if (empty($entry['software'])) {
                 continue;
             }
+            $software      = $entry['software'];
+            $software_type = $software[0]['type'] ?? 'unknown type';
+            $software_name = $software[0]['name'] ?? 'unknown name';
+            $cvss          = $entry['cvss']['score'] ?? 'unknown';
 
             $updated_result = $this->updateConflictsForVulnerability($entry, $this->composer_json_content);
-            if ($updated_result->isUpdated()) {
-                $branch_name               = $entry['id'] ?? md5(json_encode($entry['software']));
-                $new_composer_json_content = $updated_result->getComposerJsonContent();
+            if ($updated_result?->isUpdated()) {
+                try {
+                    $new_composer_json_content = $updated_result->getComposerJsonContent();
+                    $commit_message            = sprintf(
+                        '%1$s %2$s | CVSS = %3$s | %4$s',
+                        $software_type,
+                        $software_name,
+                        $cvss,
+                        $updated_result->getConflictVersionsString() ?? '',
+                    );
 
-                $encoded =
-                    json_encode(value: $new_composer_json_content, flags: JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+                    $encoded     = json_encode(
+                        value: $new_composer_json_content,
+                        flags: JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
+                    );
+                    $branch_name = $entry['id'] ?? md5(json_encode($entry['software']));
 
-                file_put_contents("new_composer{$i}.txt", $encoded);
+                    $this->github_api_controller->createBranch($branch_name, static::REPO_DEFAULT_BRANCH_NAME);
+                    $this->github_api_controller->updateFileContent(
+                        static::COMPOSER_JSON_PATH,
+                        $encoded,
+                        $commit_message,
+                        $this->github_api_controller->getFileSha(
+                            static::COMPOSER_JSON_PATH,
+                            static::REPO_DEFAULT_BRANCH_NAME
+                        ),
+                        $branch_name
+                    );
+                    $this->github_api_controller->createPullRequest(
+                        static::REPO_DEFAULT_BRANCH_NAME,
+                        $branch_name,
+                        $commit_message,
+                        sprintf(
+                            "According to [Wordfence](https://www.wordfence.com/threat-intel/vulnerabilities/), %1\$s %2\$s has a %3\$s CVSS security vulnerability\n\nI'm bumping versions to %4\$s",
+                            $software_type,
+                            $software_name,
+                            $cvss,
+                            $updated_result->getConflictVersionsString() ?? '',
+                        )
+                    );
+                } catch (Exception $e) {
+                    continue;
+                }
             }
-            if ($i > 1) {
-                break;
-            }
+
+            sleep($pause);
         }
     }
 
@@ -109,16 +124,16 @@ class Renovator
      * @param array $entry
      * @param array $composer_json_content
      *
-     * @return ConflictSectionUpdateResult
+     * @return ConflictSectionUpdateResult|null
      */
     protected function updateConflictsForVulnerability(
         array $entry,
         array $composer_json_content
-    ): ConflictSectionUpdateResult {
+    ): ?ConflictSectionUpdateResult {
         $updated  = false;
         $software = $entry['software'];
         if (empty($software)) {
-            return new ConflictSectionUpdateResult($composer_json_content);
+            return null;
         }
 
         foreach ($software as $software_entry) {
@@ -176,7 +191,7 @@ class Renovator
             }
         }
 
-        return new ConflictSectionUpdateResult($composer_json_content, $updated);
+        return new ConflictSectionUpdateResult($composer_json_content, $conflict_versions_string ?? '', $updated);
     }
 
     /**
@@ -222,45 +237,6 @@ class Renovator
     }
 
     /**
-     * @return string|null
-     */
-    protected function getMasterSha(): ?string
-    {
-        $reference = $this->github_client
-            ->api('gitData')
-            ->references()
-            ->show($this->repo_owner, $this->repo_name, 'heads/master');
-
-        return $reference['object']['sha'] ?? null
-            ? (string)$reference['object']['sha']
-            : null;
-    }
-
-    /**
-     * Retrieves remote repository's composer.json content
-     *
-     * @throws JsonException
-     * @throws RuntimeException
-     * @return array
-     */
-    private function getComposerJsonContent(): array
-    {
-        $composer_json_data = $this->github_client
-            ->api('repo')
-            ->contents()
-            ->show($this->repo_owner, $this->repo_name, static::COMPOSER_JSON_PATH);
-        if (!$composer_json_data || !isset($composer_json_data['content'])) {
-            throw new RuntimeException('Missing composer.json content');
-        }
-
-        return json_decode(
-            base64_decode($composer_json_data['content']),
-            associative: true,
-            flags: JSON_THROW_ON_ERROR
-        );
-    }
-
-    /**
      * Whether passed string is a valid composer.json version of a package
      *
      * @param string $version
@@ -270,7 +246,7 @@ class Renovator
     private function isValidComposerVersion(string $version): bool
     {
         try {
-            $this->versionParser->parseConstraints($version);
+            $this->version_parser->parseConstraints($version);
 
             return true;
         } catch (Exception $e) {
