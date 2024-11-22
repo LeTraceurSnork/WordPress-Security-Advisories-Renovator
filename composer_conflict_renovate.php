@@ -10,7 +10,7 @@ require 'vendor/autoload.php';
 define('BOT_PERSONAL_ACCESS_TOKEN', getenv('BOT_PERSONAL_ACCESS_TOKEN'));
 define('REPO_OWNER', getenv('REPO_OWNER'));
 define('REPO_NAME', getenv('REPO_NAME'));
-define('API_PAUSE_BETWEEN_ACTIONS_SECONDS', getenv('API_PAUSE_BETWEEN_ACTIONS_SECONDS'));
+define('API_PAUSE_BETWEEN_ACTIONS_SECONDS', (int)getenv('API_PAUSE_BETWEEN_ACTIONS_SECONDS'));
 
 try {
     $github_client = new Client();
