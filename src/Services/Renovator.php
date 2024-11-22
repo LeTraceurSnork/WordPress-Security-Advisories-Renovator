@@ -10,6 +10,8 @@ use Github\Client as GithubClient;
 use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Exception\GuzzleException;
 use JsonException;
+use LTS\WordpressSecurityAdvisoriesRenovator\Controllers\WordfenceController;
+use LTS\WordpressSecurityAdvisoriesRenovator\DTO\ConflictSectionUpdateResult;
 use Psr\Http\Client\ClientInterface;
 use RuntimeException;
 
@@ -22,11 +24,6 @@ class Renovator
      * Path to composer.json renovating file
      */
     public const COMPOSER_JSON_PATH = 'composer.json';
-
-    /**
-     * URL of Wordfence /scanner/ feed (short version of API list)
-     */
-    public const WORDFENCE_SCANNER_FEED_URL = 'https://www.wordfence.com/api/intelligence/v2/vulnerabilities/scanner/';
 
     /**
      * @var string Bot's GitHub Personal Access Token
@@ -51,14 +48,16 @@ class Renovator
     protected array $composer_json_content;
 
     /**
-     * @param ClientInterface $client
-     * @param GithubClient    $github_client
-     * @param VersionParser   $versionParser
+     * @param ClientInterface     $client
+     * @param GithubClient        $github_client
+     * @param VersionParser       $versionParser
+     * @param WordfenceController $wordfence_controller
      */
     public function __construct(
         protected readonly ClientInterface $client = new GuzzleClient(),
         protected readonly GithubClient $github_client = new GithubClient(),
         protected readonly VersionParser $versionParser = new VersionParser(),
+        protected readonly WordfenceController $wordfence_controller = new WordfenceController()
     ) {
     }
 
@@ -74,65 +73,52 @@ class Renovator
      */
     public function renovate(string $token, string $repo_owner, string $repo_name): void
     {
-        $this->token                 = $token;
-        $this->repo_owner            = $repo_owner;
-        $this->repo_name             = $repo_name;
+        $this->token      = $token;
+        $this->repo_owner = $repo_owner;
+        $this->repo_name  = $repo_name;
+
         $this->composer_json_content = $this->getComposerJsonContent();
+        $feed                        = $this->wordfence_controller->getScannerFeed();
 
-        $feed = $this->getScannerFeed();
-
-        $time1 = time();
+        $i = 0;
         foreach ($feed as $entry) {
+            $i++;
             if (empty($entry['software'])) {
                 continue;
             }
 
-            $updated = $this->updateConflictsForVulnerability($entry);
+            $updated_result = $this->updateConflictsForVulnerability($entry, $this->composer_json_content);
+            if ($updated_result->isUpdated()) {
+                $branch_name               = $entry['id'] ?? md5(json_encode($entry['software']));
+                $new_composer_json_content = $updated_result->getComposerJsonContent();
+
+                $encoded =
+                    json_encode(value: $new_composer_json_content, flags: JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+
+                file_put_contents("new_composer{$i}.txt", $encoded);
+            }
+            if ($i > 1) {
+                break;
+            }
         }
-        $time2 = time();
-        var_dump($time2 - $time1);
-
-        $encoded = json_encode(value: $this->composer_json_content, flags: JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-
-        file_put_contents('new_composer.txt', $encoded);
-    }
-
-    /**
-     * @throws GuzzleException
-     * @throws JsonException
-     * @return array{
-     *     software: array{
-     *         type: string,
-     *         name: string,
-     *         slug: string,
-     *         affected_versions: array,
-     *     }[]
-     * }[]
-     */
-    protected function getScannerFeed(): array
-    {
-        $response = $this->client->get(static::WORDFENCE_SCANNER_FEED_URL);
-
-        return json_decode(
-            json: $response->getBody()->getContents(),
-            associative: true,
-            flags: JSON_THROW_ON_ERROR
-        );
     }
 
     /**
      * Updates composer.json conflict section for specified vulnerability.
      *
      * @param array $entry
+     * @param array $composer_json_content
      *
-     * @return bool Whether composer.json was updated or not.
+     * @return ConflictSectionUpdateResult
      */
-    protected function updateConflictsForVulnerability(array $entry): bool
-    {
+    protected function updateConflictsForVulnerability(
+        array $entry,
+        array $composer_json_content
+    ): ConflictSectionUpdateResult {
         $updated  = false;
         $software = $entry['software'];
         if (empty($software)) {
-            return false;
+            return new ConflictSectionUpdateResult($composer_json_content);
         }
 
         foreach ($software as $software_entry) {
@@ -173,27 +159,24 @@ class Renovator
                     continue;
                 }
 
-                if (!isset($this->composer_json_content['conflict'][$vulnerability_key])) {
-                    $this->composer_json_content['conflict'][$vulnerability_key] = $conflict_versions_string;
-                    $updated                                                     = true;
+                if (!isset($composer_json_content['conflict'][$vulnerability_key])) {
+                    $composer_json_content['conflict'][$vulnerability_key] = $conflict_versions_string;
+                    $updated                                               = true;
                     continue;
                 }
 
-                if (!str_contains(
-                    $this->composer_json_content['conflict'][$vulnerability_key],
-                    $conflict_versions_string
-                )) {
-                    $this->composer_json_content['conflict'][$vulnerability_key] .= " || $conflict_versions_string";
-                    $updated                                                     = true;
+                if (!str_contains($composer_json_content['conflict'][$vulnerability_key], $conflict_versions_string)) {
+                    $composer_json_content['conflict'][$vulnerability_key] .= " || $conflict_versions_string";
+                    $updated                                               = true;
                 }
             }
 
             if ($updated) {
-                ksort($this->composer_json_content['conflict']);
+                ksort($composer_json_content['conflict']);
             }
         }
 
-        return $updated;
+        return new ConflictSectionUpdateResult($composer_json_content, $updated);
     }
 
     /**
