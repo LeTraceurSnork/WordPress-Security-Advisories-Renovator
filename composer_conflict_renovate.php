@@ -5,9 +5,9 @@ use LTS\WordpressSecurityAdvisoriesRenovator\Services\Renovator;
 
 require 'vendor/autoload.php';
 
-define('GITHUB_TOKEN', getenv('GITHUB_TOKEN'));
-define('GITHUB_REPO_OWNER', getenv('GITHUB_REPO_OWNER'));
-define('GITHUB_REPO_NAME', getenv('GITHUB_REPO_NAME'));
+define('BOT_PERSONAL_ACCESS_TOKEN', getenv('BOT_PERSONAL_ACCESS_TOKEN'));
+define('REPO_OWNER', getenv('REPO_OWNER'));
+define('REPO_NAME', getenv('REPO_NAME'));
 
 try {
     $client    = new Client();
@@ -17,7 +17,7 @@ try {
         ->show('LeTraceurSnork', 'WordPress-Security-Advisories', 'heads/master');
 
     $renovator = new Renovator();
-    $renovator->renovate(GITHUB_TOKEN, GITHUB_REPO_OWNER, GITHUB_REPO_NAME);
+    $renovator->renovate(BOT_PERSONAL_ACCESS_TOKEN, REPO_OWNER, REPO_NAME);
 } catch (Exception $e) {
     var_dump($e->getMessage());
 }
