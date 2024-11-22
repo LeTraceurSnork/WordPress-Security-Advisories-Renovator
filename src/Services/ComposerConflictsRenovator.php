@@ -102,12 +102,12 @@ class ComposerConflictsRenovator
                         $branch_name,
                         $commit_message,
                         sprintf(
-                            "According to [Wordfence](https://www.wordfence.com/threat-intel/vulnerabilities/), %1\$s %2\$s has a %3\$s CVSS security vulnerability\n\nI'm bumping versions to %4\$s\n\nReference: %5\$s",
+                            "According to [Wordfence](https://www.wordfence.com/threat-intel/vulnerabilities/), %1\$s %2\$s has a %3\$s CVSS security vulnerability\n\nI'm bumping versions to %4\$s\n\nReferences: %5\$s",
                             $software_type,
                             $software_name,
                             $cvss,
                             $updated_result->getConflictVersionsString() ?? '',
-                            $software[0]['references'] ?? ''
+                            implode(' , ', $software[0]['references'] ?? [])
                         )
                     );
                 } catch (Exception $e) {
@@ -178,11 +178,12 @@ class ComposerConflictsRenovator
                 if (!isset($composer_json_content['conflict'][$vulnerability_key])) {
                     $composer_json_content['conflict'][$vulnerability_key] = $conflict_versions_string;
                     $updated                                               = true;
+
                     continue;
                 }
 
                 if (!str_contains($composer_json_content['conflict'][$vulnerability_key], $conflict_versions_string)) {
-                    $composer_json_content['conflict'][$vulnerability_key] .= " || $conflict_versions_string";
+                    $composer_json_content['conflict'][$vulnerability_key] .= " || {$conflict_versions_string}";
                     $updated                                               = true;
                 }
             }

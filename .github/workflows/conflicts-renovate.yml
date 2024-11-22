@@ -19,11 +19,12 @@ jobs:
           php-version: '8.2'
 
       - name: Install dependencies
-        run: composer install
+        run: composer install --no-dev
 
       - name: Run update script
         env:
           BOT_PERSONAL_ACCESS_TOKEN: ${{ secrets.BOT_PERSONAL_ACCESS_TOKEN }}
           REPO_OWNER: ${{ vars.REPO_OWNER }}
           REPO_NAME: ${{ vars.REPO_NAME }}
+          API_PAUSE_BETWEEN_ACTIONS_SECONDS: ${{ vars.API_PAUSE_BETWEEN_ACTIONS_SECONDS }}
         run: php composer_conflict_renovate.php

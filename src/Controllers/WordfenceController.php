@@ -40,7 +40,11 @@ class WordfenceController
      *         name: string,
      *         slug: string,
      *         affected_versions: array,
-     *     }[]
+     *     }[],
+     *     references: string[],
+     *     cvss: array{
+     *          score: float|null,
+     *     },
      * }[]
      */
     public function getProductionFeed(): array

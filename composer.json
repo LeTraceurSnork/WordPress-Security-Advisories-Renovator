@@ -22,9 +22,19 @@
         "nyholm/psr7": "1.8.2",
         "symfony/http-client": "7.1.8"
     },
+    "require-dev": {
+        "gomzyakov/php-cs-fixer-config": "^1.77",
+        "friendsofphp/php-cs-fixer": "^3.64",
+        "phpstan/phpstan": "^2.0"
+    },
     "config": {
         "allow-plugins": {
             "php-http/discovery": true
         }
+    },
+    "scripts": {
+        "phpstan": "@php ./vendor/bin/phpstan analyze -c ./phpstan.neon.dist --no-progress --ansi --verbose",
+        "php-cs-fixer-fix": "@php ./vendor/bin/php-cs-fixer fix --config=.php-cs-fixer.dist.php",
+        "php-cs-fixer-check": "@php ./vendor/bin/php-cs-fixer fix --dry-run --config=.php-cs-fixer.dist.php"
     }
 }
