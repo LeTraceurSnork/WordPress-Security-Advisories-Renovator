@@ -59,14 +59,19 @@ class ComposerConflictsRenovator
         $this->composer_json_content = json_decode($file_content, associative: true, flags: JSON_THROW_ON_ERROR);
         $feed                        = $this->wordfence_controller->getProductionFeed();
 
+        echo "Got production feed!\n\n";
+
         foreach ($feed as $entry) {
             if (empty($entry['software'])) {
                 continue;
             }
+
             $software      = $entry['software'];
-            $software_type = $software[0]['type'] ?? 'unknown type';
-            $software_name = $software[0]['name'] ?? 'unknown name';
-            $cvss          = $entry['cvss']['score'] ?? 'unknown';
+            $software_type = (string)($software[0]['type'] ?? 'unknown type');
+            $software_name = (string)($software[0]['name'] ?? 'unknown name');
+            $cvss          = (string)($entry['cvss']['score'] ?? 'unknown');
+
+            echo "Trying to renovate {$software_name}\n";
 
             $updated_result = $this->updateConflictsForVulnerability($entry, $this->composer_json_content);
             if ($updated_result?->isUpdated()) {
@@ -110,7 +115,9 @@ class ComposerConflictsRenovator
                             implode(' , ', $software[0]['references'] ?? [])
                         )
                     );
+                    echo "!!! === Pull Request created === !!!\n\n";
                 } catch (Exception $e) {
+                    echo "Something went wrong with this one, continuing\n\n";
                     continue;
                 }
             }
@@ -138,6 +145,11 @@ class ComposerConflictsRenovator
         }
 
         foreach ($software as $software_entry) {
+            $slug = $software_entry['slug'];
+            if (!is_string($slug) || $slug === '') {
+                continue;
+            }
+
             $affectedVersions = $software_entry['affected_versions'] ?? [];
             if (!is_array($affectedVersions) || empty($affectedVersions)) {
                 continue;
@@ -148,12 +160,12 @@ class ComposerConflictsRenovator
                 case 'plugin':
                 case 'theme':
                     $vulnerability_key =
-                        strtolower(sprintf('wpackagist-%1$s/%2$s', $entry_type, $software_entry['slug']));
+                        strtolower(sprintf('wpackagist-%1$s/%2$s', $entry_type, $slug));
 
                     break;
 
                 case 'core':
-                    if ($software_entry['slug'] !== 'wordpress') {
+                    if ($slug !== 'wordpress') {
                         break;
                     }
 
