@@ -138,14 +138,14 @@ class ComposerConflictsUpgrader
         array $entry,
         array $composer_json_content
     ): ?ConflictSectionUpgradeResult {
-        $upgraded = false;
         $software = $entry['software'];
         if (empty($software)) {
             return null;
         }
 
         foreach ($software as $software_entry) {
-            $slug = $software_entry['slug'];
+            $upgraded = false;
+            $slug     = $software_entry['slug'];
             if (!is_string($slug) || $slug === '') {
                 continue;
             }
