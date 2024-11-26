@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace LTS\WordpressSecurityAdvisoriesUpgrader\Controllers;
 
-use Exception;
 use Github\Client;
 use Github\Exception\InvalidArgumentException;
 use Github\Exception\MissingArgumentException;
@@ -61,22 +60,27 @@ final readonly class GithubApiController
      *
      * @param string $branch_name
      *
-     * @return string|null
+     * @throws RuntimeException
+     * @return string
      */
-    public function getBranchSha(string $branch_name): ?string
+    public function getBranchSha(string $branch_name): string
     {
-        try {
-            $reference = $this->client
-                ->api('gitData')
-                ->references()
-                ->show($this->repo_owner, $this->repo_name, sprintf('heads/%1$s', $branch_name));
+        $reference = $this->client
+            ->api('gitData')
+            ->references()
+            ->show($this->repo_owner, $this->repo_name, sprintf('heads/%1$s', $branch_name));
 
-            return is_array($reference)
-                ? $reference['object']['sha'] ?? null
-                : null;
-        } catch (Exception $e) {
-            return null;
+        if (!is_array($reference)) {
+            throw new RuntimeException(sprintf('Unable to retrieve sha information for branch: %1$s', $branch_name));
         }
+
+        $sha = $reference['object']['sha'] ?? null;
+
+        if (!isset($sha)) {
+            throw new RuntimeException(sprintf('Unable to retrieve sha information for branch: %1$s', $branch_name));
+        }
+
+        return $sha;
     }
 
     /**

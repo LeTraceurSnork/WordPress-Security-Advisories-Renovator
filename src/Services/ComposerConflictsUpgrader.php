@@ -82,7 +82,13 @@ class ComposerConflictsUpgrader
                     $this->tryToCreatePullRequest($entry, $upgrade_result);
                     $this->logger->notice('!!! === Pull Request created === !!!');
                 } catch (Exception $e) {
-                    $this->logger->warning(sprintf('Something went wrong with id=%1$s, continuing', $entry_id));
+                    $this->logger->warning(
+                        sprintf(
+                            'Something went wrong with id=%1$s, details: %2$s ; CONTINUE',
+                            $entry_id,
+                            $e->getMessage()
+                        )
+                    );
                     continue;
                 }
             }
