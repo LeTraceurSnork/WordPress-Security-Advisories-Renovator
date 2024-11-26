@@ -121,7 +121,12 @@ final readonly class GithubApiController
             throw new RuntimeException(sprintf('Missing "%1$s" content', $path_to_file));
         }
 
-        return base64_decode($file_data['content']);
+        $decoded_data = base64_decode(string: $file_data['content'], strict: true);
+        if (!is_string($decoded_data)) {
+            throw new RuntimeException(sprintf('Could not base64_decode "%1$s" content', $path_to_file));
+        }
+
+        return $decoded_data;
     }
 
     /**
