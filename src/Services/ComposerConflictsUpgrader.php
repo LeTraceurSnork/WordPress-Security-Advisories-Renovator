@@ -6,6 +6,8 @@ namespace LTS\WordpressSecurityAdvisoriesUpgrader\Services;
 
 use Composer\Semver\VersionParser;
 use Exception;
+use Github\Exception\InvalidArgumentException;
+use Github\Exception\MissingArgumentException;
 use GuzzleHttp\Exception\GuzzleException;
 use JsonException;
 use LTS\WordpressSecurityAdvisoriesUpgrader\Controllers\GithubApiController;
@@ -65,61 +67,19 @@ class ComposerConflictsUpgrader
         $this->logger->info('Got production feed!');
 
         foreach ($feed as $entry) {
+            $this->logger->debug('');
+            $this->logger->debug('');
+
             $entry_id = $entry['id'] ?? 'unknown';
             if (empty($entry['software'])) {
                 $this->logger->warning(sprintf('Got empty $entry["software"] for id=%1$s', $entry_id));
                 continue;
             }
 
-            $software      = $entry['software'];
-            $software_type = (string)($software[0]['type'] ?? 'unknown type');
-            $software_name = (string)($software[0]['name'] ?? 'unknown name');
-            $cvss          = (string)($entry['cvss']['score'] ?? 'unknown');
-
-            $this->logger->info(sprintf('Trying to renovate %1$s', $software_name));
-
             $upgrade_result = $this->upgradeConflictsForVulnerability($entry, $this->composer_json_content);
-            if ($upgrade_result?->isUpgraded()) {
+            if ($upgrade_result instanceof ConflictSectionUpgradeResult && $upgrade_result->isUpgraded()) {
                 try {
-                    $new_composer_json_content = $upgrade_result->getComposerJsonContent();
-                    $commit_message            = sprintf(
-                        '%1$s %2$s | CVSS = %3$s | %4$s',
-                        $software_type,
-                        $software_name,
-                        $cvss,
-                        $upgrade_result->getConflictVersionsString() ?? '',
-                    );
-
-                    $encoded     = json_encode(
-                        value: $new_composer_json_content,
-                        flags: JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
-                    );
-                    $branch_name = $entry['id'] ?? md5(json_encode($entry['software']));
-
-                    $this->github_api_controller->createBranch($branch_name, static::REPO_DEFAULT_BRANCH_NAME);
-                    $this->github_api_controller->updateFileContent(
-                        static::COMPOSER_JSON_PATH,
-                        $encoded,
-                        $commit_message,
-                        $this->github_api_controller->getFileSha(
-                            static::COMPOSER_JSON_PATH,
-                            static::REPO_DEFAULT_BRANCH_NAME
-                        ),
-                        $branch_name
-                    );
-                    $this->github_api_controller->createPullRequest(
-                        static::REPO_DEFAULT_BRANCH_NAME,
-                        $branch_name,
-                        $commit_message,
-                        sprintf(
-                            "According to [Wordfence](https://www.wordfence.com/threat-intel/vulnerabilities/), %1\$s %2\$s has a %3\$s CVSS security vulnerability\n\nI'm bumping versions to %4\$s\n\nReferences: %5\$s",
-                            $software_type,
-                            $software_name,
-                            $cvss,
-                            $upgrade_result->getConflictVersionsString() ?? '',
-                            implode(' , ', $software[0]['references'] ?? [])
-                        )
-                    );
+                    $this->tryToCreatePullRequest($entry, $upgrade_result);
                     $this->logger->notice('!!! === Pull Request created === !!!');
                 } catch (Exception $e) {
                     $this->logger->warning(sprintf('Something went wrong with id=%1$s, continuing', $entry_id));
@@ -129,6 +89,66 @@ class ComposerConflictsUpgrader
 
             sleep($pause);
         }
+    }
+
+    /**
+     * Tries to create pull request on selected repository for passed $entry and with $upgraded_result
+     *
+     * @param array                        $entry          Entry for which PR is created
+     * @param ConflictSectionUpgradeResult $upgrade_result Result of composer upgrade conflict section for this $entry
+     *
+     * @throws InvalidArgumentException
+     * @throws MissingArgumentException
+     * @throws RuntimeException
+     * @return void
+     */
+    protected function tryToCreatePullRequest(array $entry, ConflictSectionUpgradeResult $upgrade_result): void
+    {
+        $new_composer_json_content = $upgrade_result->getComposerJsonContent();
+        $encoded                   = json_encode(
+            value: $new_composer_json_content,
+            flags: JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
+        );
+        $branch_name               = $entry['id'] ?? md5(json_encode($entry['software']));
+
+        $software      = $entry['software'];
+        $software_type = (string)($software[0]['type'] ?? 'unknown type');
+        $software_name = (string)($software[0]['name'] ?? 'unknown name');
+        $cvss          = (string)($entry['cvss']['score'] ?? 'unknown');
+
+        $this->logger->info(sprintf('Trying to renovate %1$s', $software_name));
+
+        $commit_message = sprintf(
+            '%1$s %2$s | CVSS = %3$s | %4$s',
+            $software_type,
+            $software_name,
+            $cvss,
+            $upgrade_result->getConflictVersionsString() ?? '',
+        );
+        $this->github_api_controller->createBranch($branch_name, static::REPO_DEFAULT_BRANCH_NAME);
+        $this->github_api_controller->updateFileContent(
+            static::COMPOSER_JSON_PATH,
+            $encoded,
+            $commit_message,
+            $this->github_api_controller->getFileSha(
+                static::COMPOSER_JSON_PATH,
+                static::REPO_DEFAULT_BRANCH_NAME
+            ),
+            $branch_name
+        );
+        $this->github_api_controller->createPullRequest(
+            static::REPO_DEFAULT_BRANCH_NAME,
+            $branch_name,
+            $commit_message,
+            sprintf(
+                "According to [Wordfence](https://www.wordfence.com/threat-intel/vulnerabilities/), %1\$s %2\$s has a %3\$s CVSS security vulnerability\n\nI'm bumping versions to %4\$s\n\nReferences: %5\$s",
+                $software_type,
+                $software_name,
+                $cvss,
+                $upgrade_result->getConflictVersionsString() ?? '',
+                implode(' , ', $software[0]['references'] ?? [])
+            )
+        );
     }
 
     /**
@@ -198,7 +218,7 @@ class ComposerConflictsUpgrader
                     $this->logger->warning(
                         sprintf(
                             'Couldn\'t create conflict versions string for affected_versions[%1$s] of package=%2$s',
-                            $affected_version,
+                            $key,
                             $slug
                         )
                     );

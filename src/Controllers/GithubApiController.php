@@ -6,6 +6,8 @@ namespace LTS\WordpressSecurityAdvisoriesUpgrader\Controllers;
 
 use Exception;
 use Github\Client;
+use Github\Exception\InvalidArgumentException;
+use Github\Exception\MissingArgumentException;
 use JsonException;
 use RuntimeException;
 
@@ -30,6 +32,7 @@ final readonly class GithubApiController
      * @param string $branch_name
      * @param string $from_branch
      *
+     * @throws MissingArgumentException
      * @throws RuntimeException
      * @return void
      */
@@ -128,6 +131,7 @@ final readonly class GithubApiController
      * @param string $old_sha
      * @param string $branch
      *
+     * @throws MissingArgumentException
      * @return void
      */
     public function updateFileContent(
@@ -151,6 +155,8 @@ final readonly class GithubApiController
      * @param string $title
      * @param string $body
      *
+     * @throws InvalidArgumentException
+     * @throws MissingArgumentException
      * @return void
      */
     public function createPullRequest(string $base_branch, string $head_branch, string $title, string $body = ''): void
