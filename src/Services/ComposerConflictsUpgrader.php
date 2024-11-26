@@ -60,6 +60,8 @@ class ComposerConflictsUpgrader
      */
     public function renovate(int $pause = 1): void
     {
+        $this->logger->debug(sprintf('PHP max_execution_time set to %1$s', ini_get('max_execution_time')));
+
         $file_content                = $this->github_api_controller->getFileContent(static::COMPOSER_JSON_PATH);
         $this->composer_json_content = json_decode($file_content, associative: true, flags: JSON_THROW_ON_ERROR);
         $feed                        = $this->wordfence_controller->getProductionFeed();
