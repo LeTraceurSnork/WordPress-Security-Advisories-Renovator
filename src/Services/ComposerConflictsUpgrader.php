@@ -11,6 +11,7 @@ use JsonException;
 use LTS\WordpressSecurityAdvisoriesUpgrader\Controllers\GithubApiController;
 use LTS\WordpressSecurityAdvisoriesUpgrader\Controllers\WordfenceController;
 use LTS\WordpressSecurityAdvisoriesUpgrader\DTO\ConflictSectionUpgradeResult;
+use Psr\Log\LoggerInterface;
 use RuntimeException;
 
 /**
@@ -35,13 +36,15 @@ class ComposerConflictsUpgrader
 
     /**
      * @param GithubApiController $github_api_controller
+     * @param LoggerInterface     $logger
      * @param VersionParser       $version_parser
      * @param WordfenceController $wordfence_controller
      */
     public function __construct(
         protected readonly GithubApiController $github_api_controller,
+        protected readonly LoggerInterface $logger,
         protected readonly VersionParser $version_parser = new VersionParser(),
-        protected readonly WordfenceController $wordfence_controller = new WordfenceController()
+        protected readonly WordfenceController $wordfence_controller = new WordfenceController(),
     ) {
     }
 
@@ -59,10 +62,12 @@ class ComposerConflictsUpgrader
         $this->composer_json_content = json_decode($file_content, associative: true, flags: JSON_THROW_ON_ERROR);
         $feed                        = $this->wordfence_controller->getProductionFeed();
 
-        echo "Got production feed!\n\n";
+        $this->logger->info('Got production feed!');
 
         foreach ($feed as $entry) {
+            $entry_id = $entry['id'] ?? 'unknown';
             if (empty($entry['software'])) {
+                $this->logger->warning(sprintf('Got empty $entry["software"] for id=%1$s', $entry_id));
                 continue;
             }
 
@@ -71,7 +76,7 @@ class ComposerConflictsUpgrader
             $software_name = (string)($software[0]['name'] ?? 'unknown name');
             $cvss          = (string)($entry['cvss']['score'] ?? 'unknown');
 
-            echo "Trying to renovate {$software_name}\n";
+            $this->logger->info(sprintf('Trying to renovate %1$s', $software_name));
 
             $upgrade_result = $this->upgradeConflictsForVulnerability($entry, $this->composer_json_content);
             if ($upgrade_result?->isUpgraded()) {
@@ -115,9 +120,9 @@ class ComposerConflictsUpgrader
                             implode(' , ', $software[0]['references'] ?? [])
                         )
                     );
-                    echo "!!! === Pull Request created === !!!\n\n";
+                    $this->logger->notice('!!! === Pull Request created === !!!');
                 } catch (Exception $e) {
-                    echo "Something went wrong with this one, continuing\n\n";
+                    $this->logger->warning(sprintf('Something went wrong with id=%1$s, continuing', $entry_id));
                     continue;
                 }
             }
@@ -138,8 +143,11 @@ class ComposerConflictsUpgrader
         array $entry,
         array $composer_json_content
     ): ?ConflictSectionUpgradeResult {
+        $entry_id = $entry['id'] ?? 'unknown';
         $software = $entry['software'];
         if (empty($software)) {
+            $this->logger->warning(sprintf('Got empty $entry["software"] for id=%1$s', $entry_id));
+
             return null;
         }
 
@@ -147,11 +155,13 @@ class ComposerConflictsUpgrader
             $upgraded = false;
             $slug     = $software_entry['slug'];
             if (!is_string($slug) || $slug === '') {
+                $this->logger->warning(sprintf('$entry["software"] has no slug! id=%1$s', $entry_id));
                 continue;
             }
 
-            $affectedVersions = $software_entry['affected_versions'] ?? [];
-            if (!is_array($affectedVersions) || empty($affectedVersions)) {
+            $affected_versions = $software_entry['affected_versions'] ?? [];
+            if (!is_array($affected_versions) || empty($affected_versions)) {
+                $this->logger->warning(sprintf('software %1$s has no affected_versions!', $slug));
                 continue;
             }
 
@@ -178,12 +188,20 @@ class ComposerConflictsUpgrader
             }
 
             if (!isset($vulnerability_key)) {
+                $this->logger->warning(sprintf('Unknown software type=%1$s', $entry_type));
                 continue;
             }
 
-            foreach ($affectedVersions as $affected_version) {
+            foreach ($affected_versions as $key => $affected_version) {
                 $conflict_versions_string = $this->getConflictStringForAffectedVersion($affected_version);
                 if (!isset($conflict_versions_string)) {
+                    $this->logger->warning(
+                        sprintf(
+                            'Couldn\'t create conflict versions string for affected_versions[%1$s] of package=%2$s',
+                            $affected_version,
+                            $slug
+                        )
+                    );
                     continue;
                 }
 
@@ -205,7 +223,11 @@ class ComposerConflictsUpgrader
             }
         }
 
-        return new ConflictSectionUpgradeResult($composer_json_content, $conflict_versions_string ?? '', $upgraded);
+        return new ConflictSectionUpgradeResult(
+            $composer_json_content,
+            $conflict_versions_string ?? '',
+            $upgraded ?? false
+        );
     }
 
     /**
@@ -264,6 +286,8 @@ class ComposerConflictsUpgrader
 
             return true;
         } catch (Exception $e) {
+            $this->logger->warning(sprintf('Version %1$s is not a correct version', $version));
+
             return false;
         }
     }

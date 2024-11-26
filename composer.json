@@ -19,6 +19,7 @@
         "composer/semver": "3.4.3",
         "guzzlehttp/guzzle": "7.9.2",
         "knplabs/github-api": "3.16.0",
+        "monolog/monolog": "3.8.0",
         "nyholm/psr7": "1.8.2"
     },
     "require-dev": {
