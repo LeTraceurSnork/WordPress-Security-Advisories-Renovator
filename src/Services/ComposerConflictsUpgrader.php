@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace LTS\WordpressSecurityAdvisoriesRenovator\Services;
+namespace LTS\WordpressSecurityAdvisoriesUpgrader\Services;
 
 use Composer\Semver\VersionParser;
 use Exception;
 use GuzzleHttp\Exception\GuzzleException;
 use JsonException;
-use LTS\WordpressSecurityAdvisoriesRenovator\Controllers\GithubApiController;
-use LTS\WordpressSecurityAdvisoriesRenovator\Controllers\WordfenceController;
-use LTS\WordpressSecurityAdvisoriesRenovator\DTO\ConflictSectionUpdateResult;
+use LTS\WordpressSecurityAdvisoriesUpgrader\Controllers\GithubApiController;
+use LTS\WordpressSecurityAdvisoriesUpgrader\Controllers\WordfenceController;
+use LTS\WordpressSecurityAdvisoriesUpgrader\DTO\ConflictSectionUpgradeResult;
 use RuntimeException;
 
 /**
- * Service to renovate dependencies
+ * Service to upgrade dependencies
  */
-class ComposerConflictsRenovator
+class ComposerConflictsUpgrader
 {
     /**
      * Name of repository's default branch
@@ -73,16 +73,16 @@ class ComposerConflictsRenovator
 
             echo "Trying to renovate {$software_name}\n";
 
-            $updated_result = $this->updateConflictsForVulnerability($entry, $this->composer_json_content);
-            if ($updated_result?->isUpdated()) {
+            $upgrade_result = $this->upgradeConflictsForVulnerability($entry, $this->composer_json_content);
+            if ($upgrade_result?->isUpgraded()) {
                 try {
-                    $new_composer_json_content = $updated_result->getComposerJsonContent();
+                    $new_composer_json_content = $upgrade_result->getComposerJsonContent();
                     $commit_message            = sprintf(
                         '%1$s %2$s | CVSS = %3$s | %4$s',
                         $software_type,
                         $software_name,
                         $cvss,
-                        $updated_result->getConflictVersionsString() ?? '',
+                        $upgrade_result->getConflictVersionsString() ?? '',
                     );
 
                     $encoded     = json_encode(
@@ -111,7 +111,7 @@ class ComposerConflictsRenovator
                             $software_type,
                             $software_name,
                             $cvss,
-                            $updated_result->getConflictVersionsString() ?? '',
+                            $upgrade_result->getConflictVersionsString() ?? '',
                             implode(' , ', $software[0]['references'] ?? [])
                         )
                     );
@@ -127,18 +127,18 @@ class ComposerConflictsRenovator
     }
 
     /**
-     * Updates composer.json conflict section for specified vulnerability.
+     * Upgrades composer.json conflict section for specified vulnerability.
      *
      * @param array $entry
      * @param array $composer_json_content
      *
-     * @return ConflictSectionUpdateResult|null
+     * @return ConflictSectionUpgradeResult|null
      */
-    protected function updateConflictsForVulnerability(
+    protected function upgradeConflictsForVulnerability(
         array $entry,
         array $composer_json_content
-    ): ?ConflictSectionUpdateResult {
-        $updated  = false;
+    ): ?ConflictSectionUpgradeResult {
+        $upgraded = false;
         $software = $entry['software'];
         if (empty($software)) {
             return null;
@@ -189,23 +189,23 @@ class ComposerConflictsRenovator
 
                 if (!isset($composer_json_content['conflict'][$vulnerability_key])) {
                     $composer_json_content['conflict'][$vulnerability_key] = $conflict_versions_string;
-                    $updated                                               = true;
+                    $upgraded                                              = true;
 
                     continue;
                 }
 
                 if (!str_contains($composer_json_content['conflict'][$vulnerability_key], $conflict_versions_string)) {
                     $composer_json_content['conflict'][$vulnerability_key] .= " || {$conflict_versions_string}";
-                    $updated                                               = true;
+                    $upgraded                                              = true;
                 }
             }
 
-            if ($updated) {
+            if ($upgraded) {
                 ksort($composer_json_content['conflict']);
             }
         }
 
-        return new ConflictSectionUpdateResult($composer_json_content, $conflict_versions_string ?? '', $updated);
+        return new ConflictSectionUpgradeResult($composer_json_content, $conflict_versions_string ?? '', $upgraded);
     }
 
     /**

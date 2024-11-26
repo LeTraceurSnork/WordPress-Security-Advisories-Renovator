@@ -2,26 +2,26 @@
 
 declare(strict_types=1);
 
-namespace LTS\WordpressSecurityAdvisoriesRenovator\DTO;
+namespace LTS\WordpressSecurityAdvisoriesUpgrader\DTO;
 
-use LTS\WordpressSecurityAdvisoriesRenovator\Services\ComposerConflictsRenovator;
+use LTS\WordpressSecurityAdvisoriesUpgrader\Services\ComposerConflictsUpgrader;
 
 /**
- * DTO for result of method Renovator::updateConflictsForVulnerability()
+ * DTO for result of method ComposerConflictsUpgrader::upgradeConflictsForVulnerability()
  *
- * @see ComposerConflictsRenovator::updateConflictsForVulnerability()
+ * @see ComposerConflictsUpgrader::upgradeConflictsForVulnerability()
  */
-final readonly class ConflictSectionUpdateResult
+final readonly class ConflictSectionUpgradeResult
 {
     /**
      * @param array  $composer_json_content
      * @param string $conflict_versions_string
-     * @param bool   $is_updated
+     * @param bool   $is_upgraded
      */
     public function __construct(
         private array $composer_json_content,
         private string $conflict_versions_string,
-        private bool $is_updated = false
+        private bool $is_upgraded = false
     ) {
     }
 
@@ -44,8 +44,8 @@ final readonly class ConflictSectionUpdateResult
     /**
      * @return bool
      */
-    public function isUpdated(): bool
+    public function isUpgraded(): bool
     {
-        return $this->is_updated;
+        return $this->is_upgraded;
     }
 }

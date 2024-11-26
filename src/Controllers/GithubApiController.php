@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace LTS\WordpressSecurityAdvisoriesRenovator\Controllers;
+namespace LTS\WordpressSecurityAdvisoriesUpgrader\Controllers;
 
 use Exception;
 use Github\Client;

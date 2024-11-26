@@ -2,8 +2,8 @@
 
 use Github\AuthMethod;
 use Github\Client;
-use LTS\WordpressSecurityAdvisoriesRenovator\Controllers\GithubApiController;
-use LTS\WordpressSecurityAdvisoriesRenovator\Services\ComposerConflictsRenovator;
+use LTS\WordpressSecurityAdvisoriesUpgrader\Controllers\GithubApiController;
+use LTS\WordpressSecurityAdvisoriesUpgrader\Services\ComposerConflictsUpgrader;
 
 require 'vendor/autoload.php';
 
@@ -17,7 +17,7 @@ try {
     $github_client->authenticate(tokenOrLogin: BOT_PERSONAL_ACCESS_TOKEN, authMethod: AuthMethod::ACCESS_TOKEN);
     $controller = new GithubApiController($github_client, REPO_OWNER, REPO_NAME);
 
-    $renovator = new ComposerConflictsRenovator($controller);
+    $renovator = new ComposerConflictsUpgrader($controller);
     $renovator->renovate(API_PAUSE_BETWEEN_ACTIONS_SECONDS);
 } catch (Exception $e) {
     var_dump($e->getMessage());

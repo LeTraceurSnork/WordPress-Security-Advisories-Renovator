@@ -1,4 +1,4 @@
-name: Composer Conflicts Section Renovate
+name: Composer Conflicts Section Upgrade
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
     - cron: '0 3 * * *' # Daily at 03:00 AM
 
 jobs:
-  update-conflicts:
+  upgrade-conflicts:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,10 +21,10 @@ jobs:
       - name: Install dependencies
         run: composer install --no-dev
 
-      - name: Run update script
+      - name: Run upgrade script
         env:
           BOT_PERSONAL_ACCESS_TOKEN: ${{ secrets.BOT_PERSONAL_ACCESS_TOKEN }}
           REPO_OWNER: ${{ vars.REPO_OWNER }}
           REPO_NAME: ${{ vars.REPO_NAME }}
           API_PAUSE_BETWEEN_ACTIONS_SECONDS: ${{ vars.API_PAUSE_BETWEEN_ACTIONS_SECONDS }}
-        run: php composer_conflict_renovate.php
+        run: php composer_conflict_upgrade.php

@@ -1,11 +1,11 @@
 {
     "name": "letraceursnork/wordpress-security-advisories-renovator",
-    "description": "CI with a bot that periodically renovates dependencies in composer.json conflict section of WordPress-Security-Advisories repository",
+    "description": "CI with a bot that periodically upgrades dependencies in composer.json conflict section of WordPress-Security-Advisories repository",
     "type": "metapackage",
     "license": "MIT",
     "autoload": {
         "psr-4": {
-            "LTS\\WordpressSecurityAdvisoriesRenovator\\": "src/"
+            "LTS\\WordpressSecurityAdvisoriesUpgrader\\": "src/"
         }
     },
     "authors": [
