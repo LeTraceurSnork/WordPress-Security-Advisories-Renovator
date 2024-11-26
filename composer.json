@@ -29,7 +29,8 @@
     "config": {
         "allow-plugins": {
             "php-http/discovery": true
-        }
+        },
+        "sort-packages": true
     },
     "scripts": {
         "phpstan": "@php ./vendor/bin/phpstan analyze -c ./phpstan.neon.dist --no-progress --ansi --verbose",
