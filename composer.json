@@ -1,0 +1,41 @@
+{
+    "name": "letraceursnork/wordpress-security-advisories-renovator",
+    "description": "CI with a bot that periodically upgrades dependencies in composer.json conflict section of WordPress-Security-Advisories repository",
+    "type": "metapackage",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "LTS\\WordpressSecurityAdvisoriesUpgrader\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "LeTraceurSnork",
+            "email": "le_traceur_snork@mail.ru"
+        }
+    ],
+    "require": {
+        "php": ">=8.2",
+        "composer/semver": "3.4.3",
+        "guzzlehttp/guzzle": "7.9.2",
+        "knplabs/github-api": "3.16.0",
+        "monolog/monolog": "3.8.0",
+        "nyholm/psr7": "1.8.2"
+    },
+    "require-dev": {
+        "gomzyakov/php-cs-fixer-config": "^1.77",
+        "friendsofphp/php-cs-fixer": "^3.64",
+        "phpstan/phpstan": "^2.0"
+    },
+    "config": {
+        "allow-plugins": {
+            "php-http/discovery": true
+        },
+        "sort-packages": true
+    },
+    "scripts": {
+        "phpstan": "@php ./vendor/bin/phpstan analyze -c ./phpstan.neon.dist --no-progress --ansi --verbose",
+        "php-cs-fixer-fix": "@php ./vendor/bin/php-cs-fixer fix --config=.php-cs-fixer.dist.php",
+        "php-cs-fixer-check": "@php ./vendor/bin/php-cs-fixer fix --dry-run --config=.php-cs-fixer.dist.php"
+    }
+}

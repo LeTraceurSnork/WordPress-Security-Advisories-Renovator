@@ -1,0 +1,30 @@
+name: Composer Conflicts Section Upgrade
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * *' # Daily at 03:00 AM
+
+jobs:
+  upgrade-conflicts:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - name: Install dependencies
+        run: composer install --no-dev
+
+      - name: Run upgrade script
+        env:
+          BOT_PERSONAL_ACCESS_TOKEN: ${{ secrets.BOT_PERSONAL_ACCESS_TOKEN }}
+          REPO_OWNER: ${{ vars.REPO_OWNER }}
+          REPO_NAME: ${{ vars.REPO_NAME }}
+          API_PAUSE_BETWEEN_ACTIONS_SECONDS: ${{ vars.API_PAUSE_BETWEEN_ACTIONS_SECONDS }}
+        run: php composer_conflict_upgrade.php
