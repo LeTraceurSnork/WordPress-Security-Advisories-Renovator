@@ -69,33 +69,33 @@ class ComposerConflictsUpgrader
         $this->logger->info('Got production feed!');
 
         foreach ($feed as $entry) {
-            $this->logger->debug('');
-            $this->logger->debug('');
-
             $entry_id = $entry['id'] ?? 'unknown';
             if (empty($entry['software'])) {
-                $this->logger->warning(sprintf('Got empty $entry["software"] for id=%1$s', $entry_id));
+                $this->logger->warning(sprintf('Got empty $entry["software"] for id=%1$s; CONTINUE', $entry_id));
                 continue;
             }
 
             $upgrade_result = $this->upgradeConflictsForVulnerability($entry, $this->composer_json_content);
-            if ($upgrade_result instanceof ConflictSectionUpgradeResult && $upgrade_result->isUpgraded()) {
-                try {
-                    $this->tryToCreatePullRequest($entry, $upgrade_result);
-                    $this->logger->notice('!!! === Pull Request created === !!!');
-                } catch (Exception $e) {
-                    $this->logger->warning(
-                        sprintf(
-                            'Something went wrong with id=%1$s, details: %2$s ; CONTINUE',
-                            $entry_id,
-                            $e->getMessage()
-                        )
-                    );
-                    continue;
-                }
+            if (!$upgrade_result instanceof ConflictSectionUpgradeResult || !$upgrade_result->isUpgraded()) {
+                $this->logger->notice(sprintf('Not upgraded for id=%1$s', $entry_id));
+                continue;
             }
 
-            sleep($pause);
+            try {
+                $this->tryToCreatePullRequest($entry, $upgrade_result);
+                $this->logger->notice('!!! === Pull Request created === !!!');
+                sleep($pause);
+                continue;
+            } catch (Exception $e) {
+                $this->logger->warning(
+                    sprintf(
+                        'Something went wrong with id=%1$s, details: %2$s ; CONTINUE',
+                        $entry_id,
+                        $e->getMessage()
+                    )
+                );
+                continue;
+            }
         }
     }
 
@@ -174,8 +174,6 @@ class ComposerConflictsUpgrader
         $entry_id = $entry['id'] ?? 'unknown';
         $software = $entry['software'];
         if (empty($software)) {
-            $this->logger->warning(sprintf('Got empty $entry["software"] for id=%1$s', $entry_id));
-
             return null;
         }
 
