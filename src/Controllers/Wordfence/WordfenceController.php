@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace LTS\WordpressSecurityAdvisoriesUpgrader\Controllers;
+namespace LTS\WordpressSecurityAdvisoriesUpgrader\Controllers\Wordfence;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
@@ -12,7 +12,7 @@ use Psr\Http\Client\ClientInterface;
 /**
  * Controller for Wordfence API
  */
-class WordfenceController
+class WordfenceController implements WordfenceControllerInterface
 {
     /**
      * URL of Wordfence /scanner/ feed (short version of API list)
@@ -34,18 +34,7 @@ class WordfenceController
     /**
      * @throws GuzzleException
      * @throws JsonException
-     * @return array{
-     *     software: array{
-     *         type: string,
-     *         name: string,
-     *         slug: string,
-     *         affected_versions: array,
-     *     }[],
-     *     references: string[],
-     *     cvss: array{
-     *          score: float|null,
-     *     },
-     * }[]
+     * @inheritdoc
      */
     public function getProductionFeed(): array
     {
@@ -55,14 +44,7 @@ class WordfenceController
     /**
      * @throws GuzzleException
      * @throws JsonException
-     * @return array{
-     *     software: array{
-     *         type: string,
-     *         name: string,
-     *         slug: string,
-     *         affected_versions: array,
-     *     }[]
-     * }[]
+     * @inheritdoc
      */
     public function getScannerFeed(): array
     {

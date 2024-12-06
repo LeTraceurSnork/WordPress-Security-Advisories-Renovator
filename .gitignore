@@ -8,3 +8,6 @@
 
 # Vendors
 /vendor/
+
+# Mocked files
+*.mockedfeed
