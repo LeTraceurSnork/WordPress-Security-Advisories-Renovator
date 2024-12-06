@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace LTS\WordpressSecurityAdvisoriesUpgrader\Services;
 
+use Composer\Semver\Intervals;
 use Composer\Semver\VersionParser;
 use Exception;
 use Github\Exception\InvalidArgumentException;
@@ -11,7 +12,8 @@ use Github\Exception\MissingArgumentException;
 use GuzzleHttp\Exception\GuzzleException;
 use JsonException;
 use LTS\WordpressSecurityAdvisoriesUpgrader\Controllers\GithubApiController;
-use LTS\WordpressSecurityAdvisoriesUpgrader\Controllers\WordfenceController;
+use LTS\WordpressSecurityAdvisoriesUpgrader\Controllers\Wordfence\WordfenceController;
+use LTS\WordpressSecurityAdvisoriesUpgrader\Controllers\Wordfence\WordfenceControllerInterface;
 use LTS\WordpressSecurityAdvisoriesUpgrader\DTO\ConflictSectionUpgradeResult;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
@@ -37,16 +39,16 @@ class ComposerConflictsUpgrader
     protected array $composer_json_content;
 
     /**
-     * @param GithubApiController $github_api_controller
-     * @param LoggerInterface     $logger
-     * @param VersionParser       $version_parser
-     * @param WordfenceController $wordfence_controller
+     * @param GithubApiController          $github_api_controller
+     * @param LoggerInterface              $logger
+     * @param WordfenceControllerInterface $wordfence_controller
+     * @param VersionParser                $version_parser
      */
     public function __construct(
         protected readonly GithubApiController $github_api_controller,
         protected readonly LoggerInterface $logger,
+        protected readonly WordfenceControllerInterface $wordfence_controller = new WordfenceController(),
         protected readonly VersionParser $version_parser = new VersionParser(),
-        protected readonly WordfenceController $wordfence_controller = new WordfenceController(),
     ) {
     }
 
@@ -82,8 +84,16 @@ class ComposerConflictsUpgrader
             }
 
             try {
-                $this->tryToCreatePullRequest($entry, $upgrade_result);
+                //                $this->tryToCreatePullRequest($entry, $upgrade_result);
+                file_put_contents(
+                    'new_composer.json',
+                    json_encode(
+                        $upgrade_result->getComposerJsonContent(),
+                        flags: JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
+                    )
+                );
                 $this->logger->notice('!!! === Pull Request created === !!!');
+                die;
                 sleep($pause);
                 continue;
             } catch (Exception $e) {
@@ -231,17 +241,30 @@ class ComposerConflictsUpgrader
                     continue;
                 }
 
-                if (!isset($composer_json_content['conflict'][$vulnerability_key])) {
+                // Разделяем текущую строку версий в секции conflict
+                $current_conflict_version = $composer_json_content['conflict'][$vulnerability_key] ?? null;
+                if (!$current_conflict_version) {
+                    // Если строки конфликта ещё нет, просто добавляем её
                     $composer_json_content['conflict'][$vulnerability_key] = $conflict_versions_string;
                     $upgraded                                              = true;
-
                     continue;
                 }
 
-                if (!str_contains($composer_json_content['conflict'][$vulnerability_key], $conflict_versions_string)) {
-                    $composer_json_content['conflict'][$vulnerability_key] .= " || {$conflict_versions_string}";
-                    $upgraded                                              = true;
+                // Проверяем, покрывается ли новая версия уже существующей строкой
+                if ($this->isVersionCoveredByConflict($conflict_versions_string, $current_conflict_version)) {
+                    continue;
                 }
+
+                // Если новая версия полностью перекрывает старую, заменяем строку
+                if ($this->doesNewConflictOverride($conflict_versions_string, $current_conflict_version)) {
+                    $composer_json_content['conflict'][$vulnerability_key] = $conflict_versions_string;
+                    $upgraded                                              = true;
+                    continue;
+                }
+
+                // Добавляем новую версию к существующей строке
+                $composer_json_content['conflict'][$vulnerability_key] .= " || {$conflict_versions_string}";
+                $upgraded                                              = true;
             }
 
             if ($upgraded) {
@@ -316,5 +339,19 @@ class ComposerConflictsUpgrader
 
             return false;
         }
+    }
+
+    /**
+     * @param string $new_version
+     * @param string $existing_conflict
+     *
+     * @return bool
+     */
+    private function isVersionCoveredByConflict(string $new_version, string $existing_conflict): bool
+    {
+        $new_constraint      = $this->version_parser->parseConstraints($new_version);
+        $existing_constraint = $this->version_parser->parseConstraints($existing_conflict);
+
+        return Intervals::isSubsetOf($new_constraint, $existing_constraint);
     }
 }
