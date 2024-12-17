@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace LTS\WordpressSecurityAdvisoriesUpgrader\Services;
 
+use Composer\Semver\Constraint\MultiConstraint;
+use Composer\Semver\Intervals;
 use Composer\Semver\VersionParser;
 use Exception;
 use Github\Exception\InvalidArgumentException;
@@ -11,7 +13,8 @@ use Github\Exception\MissingArgumentException;
 use GuzzleHttp\Exception\GuzzleException;
 use JsonException;
 use LTS\WordpressSecurityAdvisoriesUpgrader\Controllers\GithubApiController;
-use LTS\WordpressSecurityAdvisoriesUpgrader\Controllers\WordfenceController;
+use LTS\WordpressSecurityAdvisoriesUpgrader\Controllers\Wordfence\WordfenceController;
+use LTS\WordpressSecurityAdvisoriesUpgrader\Controllers\Wordfence\WordfenceControllerInterface;
 use LTS\WordpressSecurityAdvisoriesUpgrader\DTO\ConflictSectionUpgradeResult;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
@@ -37,16 +40,16 @@ class ComposerConflictsUpgrader
     protected array $composer_json_content;
 
     /**
-     * @param GithubApiController $github_api_controller
-     * @param LoggerInterface     $logger
-     * @param VersionParser       $version_parser
-     * @param WordfenceController $wordfence_controller
+     * @param GithubApiController          $github_api_controller
+     * @param LoggerInterface              $logger
+     * @param WordfenceControllerInterface $wordfence_controller
+     * @param VersionParser                $version_parser
      */
     public function __construct(
         protected readonly GithubApiController $github_api_controller,
         protected readonly LoggerInterface $logger,
+        protected readonly WordfenceControllerInterface $wordfence_controller = new WordfenceController(),
         protected readonly VersionParser $version_parser = new VersionParser(),
-        protected readonly WordfenceController $wordfence_controller = new WordfenceController(),
     ) {
     }
 
@@ -231,17 +234,38 @@ class ComposerConflictsUpgrader
                     continue;
                 }
 
-                if (!isset($composer_json_content['conflict'][$vulnerability_key])) {
+                // Splitting the current version string in the conflict section
+                $current_conflict_version = (string)($composer_json_content['conflict'][$vulnerability_key] ?? '');
+                if (!$current_conflict_version) {
+                    // If the conflict string doesn't exist yet, simply add it
                     $composer_json_content['conflict'][$vulnerability_key] = $conflict_versions_string;
                     $upgraded                                              = true;
-
                     continue;
                 }
 
-                if (!str_contains($composer_json_content['conflict'][$vulnerability_key], $conflict_versions_string)) {
-                    $composer_json_content['conflict'][$vulnerability_key] .= " || {$conflict_versions_string}";
-                    $upgraded                                              = true;
+                // Checking if the new version is fully covered by the old version
+                if ($this->isConflictCoveredBy($current_conflict_version, $conflict_versions_string)) {
+                    continue;
                 }
+
+                // Checking if the old version is fully covered by the new version
+                if ($this->isConflictCoveredBy($current_conflict_version, $conflict_versions_string)) {
+                    $composer_json_content['conflict'][$vulnerability_key] = $conflict_versions_string;
+                    $upgraded                                              = true;
+                    continue;
+                }
+
+                // If versions intersects
+                if ($this->isConflictIntersectedBy($current_conflict_version, $conflict_versions_string)) {
+                    $composer_json_content['conflict'][$vulnerability_key] =
+                        $this->mergeIntersectedConflictString($current_conflict_version, $conflict_versions_string);
+                    $upgraded                                              = true;
+                    continue;
+                }
+
+                // Adding the new version to an existing string
+                $composer_json_content['conflict'][$vulnerability_key] .= " || {$conflict_versions_string}";
+                $upgraded                                              = true;
             }
 
             if ($upgraded) {
@@ -316,5 +340,49 @@ class ComposerConflictsUpgrader
 
             return false;
         }
+    }
+
+    /**
+     * @param string $conflict
+     * @param string $new_conflict
+     *
+     * @return bool
+     */
+    private function isConflictCoveredBy(string $conflict, string $new_conflict): bool
+    {
+        $new_constraint      = $this->version_parser->parseConstraints($new_conflict);
+        $existing_constraint = $this->version_parser->parseConstraints($conflict);
+
+        return Intervals::isSubsetOf($new_constraint, $existing_constraint);
+    }
+
+    /**
+     * @param string $conflict
+     * @param string $new_conflict
+     *
+     * @return bool
+     */
+    private function isConflictIntersectedBy(string $conflict, string $new_conflict): bool
+    {
+        $new_constraint      = $this->version_parser->parseConstraints($new_conflict);
+        $existing_constraint = $this->version_parser->parseConstraints($conflict);
+
+        return Intervals::haveIntersections($new_constraint, $existing_constraint);
+    }
+
+    /**
+     * @param string $conflict
+     * @param string $new_conflict
+     *
+     * @return string
+     */
+    private function mergeIntersectedConflictString(string $conflict, string $new_conflict): string
+    {
+        $new_constraint      = $this->version_parser->parseConstraints($new_conflict);
+        $existing_constraint = $this->version_parser->parseConstraints($conflict);
+        $multi_constraint    = MultiConstraint::create([$new_constraint, $existing_constraint], false);
+        $conflict_string     = Intervals::compactConstraint($multi_constraint)->getPrettyString();
+
+        return str_replace(['[', ']'], '', $conflict_string);
     }
 }

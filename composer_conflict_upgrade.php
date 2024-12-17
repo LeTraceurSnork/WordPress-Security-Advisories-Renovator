@@ -3,6 +3,7 @@
 use Github\AuthMethod;
 use Github\Client;
 use LTS\WordpressSecurityAdvisoriesUpgrader\Controllers\GithubApiController;
+use LTS\WordpressSecurityAdvisoriesUpgrader\Controllers\Wordfence\WordfenceController;
 use LTS\WordpressSecurityAdvisoriesUpgrader\Services\ComposerConflictsUpgrader;
 use Monolog\Handler\StreamHandler;
 use Monolog\Level;
@@ -29,8 +30,10 @@ try {
     $github_client->authenticate(tokenOrLogin: BOT_PERSONAL_ACCESS_TOKEN, authMethod: AuthMethod::ACCESS_TOKEN);
     $controller = new GithubApiController($github_client, REPO_OWNER, REPO_NAME);
 
-    $renovator = new ComposerConflictsUpgrader($controller, $logger);
+    $wordfence_controller = new WordfenceController();
+
+    $renovator = new ComposerConflictsUpgrader($controller, $logger, $wordfence_controller);
     $renovator->renovate(API_PAUSE_BETWEEN_ACTIONS_SECONDS);
 } catch (Exception $e) {
-    $logger->error($e->getMessage());
+    $logger->alert($e->getMessage());
 }
