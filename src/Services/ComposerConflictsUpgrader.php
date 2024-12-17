@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace LTS\WordpressSecurityAdvisoriesUpgrader\Services;
 
+use Composer\Semver\Constraint\MultiConstraint;
 use Composer\Semver\Intervals;
 use Composer\Semver\VersionParser;
 use Exception;
@@ -84,16 +85,8 @@ class ComposerConflictsUpgrader
             }
 
             try {
-                //                $this->tryToCreatePullRequest($entry, $upgrade_result);
-                file_put_contents(
-                    'new_composer.json',
-                    json_encode(
-                        $upgrade_result->getComposerJsonContent(),
-                        flags: JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
-                    )
-                );
+                $this->tryToCreatePullRequest($entry, $upgrade_result);
                 $this->logger->notice('!!! === Pull Request created === !!!');
-                die;
                 sleep($pause);
                 continue;
             } catch (Exception $e) {
@@ -241,28 +234,36 @@ class ComposerConflictsUpgrader
                     continue;
                 }
 
-                // Разделяем текущую строку версий в секции conflict
-                $current_conflict_version = $composer_json_content['conflict'][$vulnerability_key] ?? null;
+                // Splitting the current version string in the conflict section
+                $current_conflict_version = (string)($composer_json_content['conflict'][$vulnerability_key] ?? '');
                 if (!$current_conflict_version) {
-                    // Если строки конфликта ещё нет, просто добавляем её
+                    // If the conflict string doesn't exist yet, simply add it
                     $composer_json_content['conflict'][$vulnerability_key] = $conflict_versions_string;
                     $upgraded                                              = true;
                     continue;
                 }
 
-                // Проверяем, покрывается ли новая версия уже существующей строкой
-                if ($this->isVersionCoveredByConflict($conflict_versions_string, $current_conflict_version)) {
+                // Checking if the new version is fully covered by the old version
+                if ($this->isConflictCoveredBy($current_conflict_version, $conflict_versions_string)) {
                     continue;
                 }
 
-                // Если новая версия полностью перекрывает старую, заменяем строку
-                if ($this->doesNewConflictOverride($conflict_versions_string, $current_conflict_version)) {
+                // Checking if the old version is fully covered by the new version
+                if ($this->isConflictCoveredBy($current_conflict_version, $conflict_versions_string)) {
                     $composer_json_content['conflict'][$vulnerability_key] = $conflict_versions_string;
                     $upgraded                                              = true;
                     continue;
                 }
 
-                // Добавляем новую версию к существующей строке
+                // If versions intersects
+                if ($this->isConflictIntersectedBy($current_conflict_version, $conflict_versions_string)) {
+                    $composer_json_content['conflict'][$vulnerability_key] =
+                        $this->mergeIntersectedConflictString($current_conflict_version, $conflict_versions_string);
+                    $upgraded                                              = true;
+                    continue;
+                }
+
+                // Adding the new version to an existing string
                 $composer_json_content['conflict'][$vulnerability_key] .= " || {$conflict_versions_string}";
                 $upgraded                                              = true;
             }
@@ -342,16 +343,46 @@ class ComposerConflictsUpgrader
     }
 
     /**
-     * @param string $new_version
-     * @param string $existing_conflict
+     * @param string $conflict
+     * @param string $new_conflict
      *
      * @return bool
      */
-    private function isVersionCoveredByConflict(string $new_version, string $existing_conflict): bool
+    private function isConflictCoveredBy(string $conflict, string $new_conflict): bool
     {
-        $new_constraint      = $this->version_parser->parseConstraints($new_version);
-        $existing_constraint = $this->version_parser->parseConstraints($existing_conflict);
+        $new_constraint      = $this->version_parser->parseConstraints($new_conflict);
+        $existing_constraint = $this->version_parser->parseConstraints($conflict);
 
         return Intervals::isSubsetOf($new_constraint, $existing_constraint);
+    }
+
+    /**
+     * @param string $conflict
+     * @param string $new_conflict
+     *
+     * @return bool
+     */
+    private function isConflictIntersectedBy(string $conflict, string $new_conflict): bool
+    {
+        $new_constraint      = $this->version_parser->parseConstraints($new_conflict);
+        $existing_constraint = $this->version_parser->parseConstraints($conflict);
+
+        return Intervals::haveIntersections($new_constraint, $existing_constraint);
+    }
+
+    /**
+     * @param string $conflict
+     * @param string $new_conflict
+     *
+     * @return string
+     */
+    private function mergeIntersectedConflictString(string $conflict, string $new_conflict): string
+    {
+        $new_constraint      = $this->version_parser->parseConstraints($new_conflict);
+        $existing_constraint = $this->version_parser->parseConstraints($conflict);
+        $multi_constraint    = MultiConstraint::create([$new_constraint, $existing_constraint], false);
+        $conflict_string     = Intervals::compactConstraint($multi_constraint)->getPrettyString();
+
+        return str_replace(['[', ']'], '', $conflict_string);
     }
 }
