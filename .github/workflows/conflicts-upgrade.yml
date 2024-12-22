@@ -27,4 +27,5 @@ jobs:
           REPO_OWNER: ${{ vars.REPO_OWNER }}
           REPO_NAME: ${{ vars.REPO_NAME }}
           API_PAUSE_BETWEEN_ACTIONS_SECONDS: ${{ vars.API_PAUSE_BETWEEN_ACTIONS_SECONDS }}
+          IS_ENABLED: ${{ vars.IS_ENABLED }}
         run: php composer_conflict_upgrade.php
