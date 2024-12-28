@@ -157,7 +157,7 @@ class ComposerConflictsUpgrader
                 $software_name,
                 $cvss,
                 $upgrade_result->getConflictVersionsString() ?? '',
-                implode(' , ', $software[0]['references'] ?? [])
+                implode(' , ', $entry['references'] ?? [])
             )
         );
     }
