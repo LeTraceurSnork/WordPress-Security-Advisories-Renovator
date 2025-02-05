@@ -136,7 +136,11 @@ class ComposerConflictsUpgrader
             $cvss,
             $upgrade_result->getConflictVersionsString() ?? '',
         );
+
+        $this->logger->info('Creating branch...');
         $this->github_api_controller->createBranch($branch_name, static::REPO_DEFAULT_BRANCH_NAME);
+
+        $this->logger->info('Updating file...');
         $this->github_api_controller->updateFileContent(
             static::COMPOSER_JSON_PATH,
             $encoded,
@@ -147,6 +151,8 @@ class ComposerConflictsUpgrader
             ),
             $branch_name
         );
+
+        $this->logger->info('Creating Pull Request...');
         $this->github_api_controller->createPullRequest(
             static::REPO_DEFAULT_BRANCH_NAME,
             $branch_name,

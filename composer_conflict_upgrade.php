@@ -14,6 +14,8 @@ require 'vendor/autoload.php';
 define('BOT_PERSONAL_ACCESS_TOKEN', getenv('BOT_PERSONAL_ACCESS_TOKEN'));
 define('REPO_OWNER', getenv('REPO_OWNER'));
 define('REPO_NAME', getenv('REPO_NAME'));
+define('FORK_REPO_OWNER', getenv('FORK_REPO_OWNER'));
+define('FORK_REPO_NAME', getenv('FORK_REPO_NAME'));
 define('API_PAUSE_BETWEEN_ACTIONS_SECONDS', (int)getenv('API_PAUSE_BETWEEN_ACTIONS_SECONDS'));
 define('IS_ENABLED', (int)getenv('IS_ENABLED'));
 
@@ -28,11 +30,13 @@ if (!IS_ENABLED) {
 try {
     $github_client = new Client();
     $github_client->authenticate(tokenOrLogin: BOT_PERSONAL_ACCESS_TOKEN, authMethod: AuthMethod::ACCESS_TOKEN);
-    $controller = new GithubApiController($github_client, REPO_OWNER, REPO_NAME);
-
+    $github_controller = new GithubApiController($github_client, REPO_OWNER, REPO_NAME);
+    if (!empty(FORK_REPO_OWNER) && !empty(FORK_REPO_NAME)) {
+        $github_controller->setHeadRepository(FORK_REPO_OWNER, FORK_REPO_NAME);
+    }
     $wordfence_controller = new WordfenceController();
 
-    $renovator = new ComposerConflictsUpgrader($controller, $logger, $wordfence_controller);
+    $renovator = new ComposerConflictsUpgrader($github_controller, $logger, $wordfence_controller);
     $renovator->renovate(API_PAUSE_BETWEEN_ACTIONS_SECONDS);
 } catch (Exception $e) {
     $logger->alert($e->getMessage());
