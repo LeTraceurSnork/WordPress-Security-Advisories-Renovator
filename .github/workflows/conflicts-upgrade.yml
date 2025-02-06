@@ -24,6 +24,8 @@ jobs:
       - name: Run upgrade script
         env:
           BOT_PERSONAL_ACCESS_TOKEN: ${{ secrets.BOT_PERSONAL_ACCESS_TOKEN }}
+          FORK_REPO_OWNER: ${{ vars.FORK_REPO_OWNER }}
+          FORK_REPO_NAME: ${{ vars.FORK_REPO_NAME }}
           REPO_OWNER: ${{ vars.REPO_OWNER }}
           REPO_NAME: ${{ vars.REPO_NAME }}
           API_PAUSE_BETWEEN_ACTIONS_SECONDS: ${{ vars.API_PAUSE_BETWEEN_ACTIONS_SECONDS }}
